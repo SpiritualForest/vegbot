@@ -1,13 +1,14 @@
 from twisted.words.protocols import irc
 from twisted.internet import reactor, protocol, ssl
 import requests
+from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import re
 import os
-import json
 import sys
-from bs4 import BeautifulSoup
 from wikipedia import wikipedia # Our own plugin
+from ud import ud
+from youtube import getVideoInfo
 
 urlPatternDotcom = re.compile("^https://(www|m).youtube.com/watch\?v=.+$")
 urlPatternDotbe = re.compile("^https://youtu.be/.+$")
@@ -61,10 +62,6 @@ class TitleBot(irc.IRCClient):
         pass
 
     def privmsg(self, user, target, message):
-        if target == self.nickname:
-            # private to us, ignore for now
-            return
-        
         # If we reached here, it must be a channel message
         nick, host = user.split("!")
         print(f"<{nick}/{target}> {message}")
@@ -75,11 +72,14 @@ class TitleBot(irc.IRCClient):
                 # Due to flooding we ignore messages now
                 print("Ignoring message due to flooding")
                 return
- 
+
         words = message.split()
         if words[0].startswith("."):
             cmd = words[0][1:].lower()
             params = words[1:]
+            if target == self.nickname:
+                # Set the user issuing the command as the target
+                target = nick
             self.handleBotCommand(nick, words[0][1:], params, target)
             return
 
@@ -93,16 +93,16 @@ class TitleBot(irc.IRCClient):
                     return
                 if word in self.youtube:
                     # The title for this particular URL was already fetched earlier and cached
-                    title, author = self.youtube[word]
+                    title, uploader, duration = self.youtube[word]
                 else:
                     # Not cached. Fetch new.
-                    title, author = self.getYouTubeData(word)
-                    if (title, author) == (None, None):
+                    title, uploader, duration = getVideoInfo(word)
+                    if (title, uploader, duration) == (None, None, None):
                         # Bad URL
                         return
                     # Cache it
-                    self.youtube[word] = (title, author)
-                self.msg(target, f"{bold}Title{bold}: {title} ({bold}Uploader:{bold} {author})")
+                    self.youtube[word] = (title, uploader, duration)
+                self.msg(target, f"{bold}Title{bold}: {title} / {bold}Uploader:{bold} {uploader} / {bold}Duration:{bold} {duration}")
             
             elif urlGeneral.match(word) is not None:
                 # Regular URL title fetching
@@ -111,10 +111,16 @@ class TitleBot(irc.IRCClient):
                 if word in self.titles:
                     title = self.titles[word]
                 else:
+                    #response = requests.get(word)
                     response = self.torRequest(word)
                     if response is None or response.status_code != 200:
+                        print("--- HTTP REQUEST FAILED ---")
                         return
-                    content = response.content.decode()
+                    try:
+                        content = response.content.decode()
+                    except UnicodeDecodeError:
+                        print(f"{datetime.now()} UnicodeDecodeError for {word}")
+                        return
                     soup = BeautifulSoup(content, "html.parser")
                     title = soup.title.string
                     self.titles[word] = title
@@ -158,17 +164,12 @@ class TitleBot(irc.IRCClient):
         try:
             response = session.get(url)
         except requests.exceptions.ConnectionError:
+            print("Connection error")
             response = None
         return response
 
-    def getYouTubeData(self, url):
-        response = self.torRequest(f"https://www.youtube.com/oembed?url={url}")
-        if response is None or response.status_code != 200:
-            return (None, None)
-        json_data = json.loads(response.content.decode())
-        return (json_data["title"], json_data["author_name"])
-
     def handleBotCommand(self, nick, cmd, args, channel):
+        bold = chr(2)
         if nick in self.admins:
             if cmd == "droptitles":
                 # Drop title caches
@@ -188,9 +189,11 @@ class TitleBot(irc.IRCClient):
         if self.isFlood():
             # Flooding detected.
             return
+        if cmd == "help":
+            self.msg(channel, "Available commands: wp, ud, join, leave, droptitles, dropyoutube")
         if not args: return
         if cmd in ("wikipedia", "wiki", "w", "wp"):
-            lang = "en"
+            lang = "de" if channel == "##deutsch" else "en"
             if args[0].startswith("l=") or args[0].startswith("lang="):
                 lang = args[0].split("=").pop()
                 args.pop(0)
@@ -200,6 +203,15 @@ class TitleBot(irc.IRCClient):
             else:
                 self.msg(channel, description) 
                 self.msg(channel, f"{chr(2)}{chr(3)}12{url}{chr(3)}{chr(2)}")
+        if cmd == "ud":
+            word, definition = ud(" ".join(args))
+            if definition is None:
+                self.msg(channel, "No results found.")
+            else:
+                definition = definition.split("\n").pop(0)
+                if len(definition) > 300:
+                    definition = f"{definition[:300]}..."
+                self.msg(channel, f"{bold}{word}{bold}: {definition}")
 
 class TitleBotFactory(protocol.ClientFactory):
     def __init__(self, channels):
