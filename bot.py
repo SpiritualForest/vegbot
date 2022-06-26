@@ -93,16 +93,16 @@ class TitleBot(irc.IRCClient):
                     return
                 if word in self.youtube:
                     # The title for this particular URL was already fetched earlier and cached
-                    title, uploader, duration = self.youtube[word]
+                    title, uploader = self.youtube[word]
                 else:
                     # Not cached. Fetch new.
-                    title, uploader, duration = getVideoInfo(word)
-                    if (title, uploader, duration) == (None, None, None):
+                    title, uploader = getVideoInfo(word)
+                    if (title, uploader) == (None, None):
                         # Bad URL
                         return
                     # Cache it
-                    self.youtube[word] = (title, uploader, duration)
-                self.msg(target, f"{bold}Title{bold}: {title} / {bold}Uploader:{bold} {uploader} / {bold}Duration:{bold} {duration}")
+                    self.youtube[word] = (title, uploader)
+                self.msg(target, f"{bold}Title{bold}: {title} ({bold}Uploader:{bold} {uploader})")
             
             elif urlGeneral.match(word) is not None:
                 # Regular URL title fetching
