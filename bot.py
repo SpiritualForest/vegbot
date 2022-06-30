@@ -6,9 +6,9 @@ from datetime import datetime, timedelta
 import re
 import os
 import sys
-from wikipedia import wikipedia # Our own plugin
-from ud import ud
-from youtube import getVideoInfo
+import commands
+from tor_request import torRequest
+from plugins import wikipedia, wiktionary, youtube, ud, calc
 
 urlPatternDotcom = re.compile("^https://(www|m).youtube.com/watch\?v=.+$")
 urlPatternDotbe = re.compile("^https://youtu.be/.+$")
@@ -74,7 +74,7 @@ class TitleBot(irc.IRCClient):
                 return
 
         words = message.split()
-        if words[0].startswith("."):
+        if words[0].startswith(commands.cmdChar):
             cmd = words[0][1:].lower()
             params = words[1:]
             if target == self.nickname:
@@ -96,7 +96,7 @@ class TitleBot(irc.IRCClient):
                     title, uploader = self.youtube[word]
                 else:
                     # Not cached. Fetch new.
-                    title, uploader = getVideoInfo(word)
+                    title, uploader = youtube.getVideoInfo(word)
                     if (title, uploader) == (None, None):
                         # Bad URL
                         return
@@ -111,8 +111,7 @@ class TitleBot(irc.IRCClient):
                 if word in self.titles:
                     title = self.titles[word]
                 else:
-                    #response = requests.get(word)
-                    response = self.torRequest(word)
+                    response = torRequest(word)
                     if response is None or response.status_code != 200:
                         print("--- HTTP REQUEST FAILED ---")
                         return
@@ -157,20 +156,9 @@ class TitleBot(irc.IRCClient):
         self.nickname = f"{self.baseNick}{self.nickCollisionId}"
         return self.nickname
 
-    def torRequest(self, url):
-        session = requests.session()
-        session.proxies = {'http':  'socks5://127.0.0.1:9050',
-                       'https': 'socks5://127.0.0.1:9050'}
-        try:
-            response = session.get(url)
-        except requests.exceptions.ConnectionError:
-            print("Connection error")
-            response = None
-        return response
-
     def handleBotCommand(self, nick, cmd, args, channel):
-        bold = chr(2)
         if nick in self.admins:
+            # Admin-only commands
             if cmd == "droptitles":
                 # Drop title caches
                 self.titles = dict()
@@ -190,28 +178,15 @@ class TitleBot(irc.IRCClient):
             # Flooding detected.
             return
         if cmd == "help":
-            self.msg(channel, "Available commands: wp, ud, join, leave, droptitles, dropyoutube")
-        if not args: return
-        if cmd in ("wikipedia", "wiki", "w", "wp"):
-            lang = "de" if channel == "##deutsch" else "en"
-            if args[0].startswith("l=") or args[0].startswith("lang="):
-                lang = args[0].split("=").pop()
-                args.pop(0)
-            description, url = wikipedia(" ".join(args), lang)
-            if url is None:
-                self.msg(channel, description)
-            else:
-                self.msg(channel, description) 
-                self.msg(channel, f"{chr(2)}{chr(3)}12{url}{chr(3)}{chr(2)}")
-        if cmd == "ud":
-            word, definition = ud(" ".join(args))
-            if definition is None:
-                self.msg(channel, "No results found.")
-            else:
-                definition = definition.split("\n").pop(0)
-                if len(definition) > 300:
-                    definition = f"{definition[:300]}..."
-                self.msg(channel, f"{bold}{word}{bold}: {definition}")
+            # FIXME: handle this shit
+            self.msg(channel, "Available commands: calc, wp, ud, join, leave, droptitles, dropyoutube")
+        
+        if not args:
+            return
+        if cmd in commands.callbacks:
+            replies = commands.executeCommand(cmd, channel, args)
+            for reply in replies:
+                self.msg(channel, reply)
 
 class TitleBotFactory(protocol.ClientFactory):
     def __init__(self, channels):
