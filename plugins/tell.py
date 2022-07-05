@@ -22,6 +22,7 @@ def tell(botObj, nick, target, params):
 
 def tellCmd(sender, user, message):
     # Redis keys
+    user = user.lower()
     listKey = f"{user}:pending-messages"
     lastMsgId = r.lrange(listKey, -1, -1) # Get the last message ID, then we increase this value
     if not lastMsgId:
@@ -53,7 +54,8 @@ def tellCallback(botObj, nick, target, params):
         botObj.msg(target, message)
 
 def getUserMessages(nick):
-    listKey = f"{nick}:pending-messages"
+    nickLower = nick.lower()
+    listKey = f"{nickLower}:pending-messages"
     messages = r.lrange(listKey, 0, -1)
     if not messages:
         # Do nothing
@@ -61,7 +63,7 @@ def getUserMessages(nick):
     replies = []
     for msgId in messages:
         msgId = int(msgId)
-        msgKey = getMessageKey(nick, msgId)
+        msgKey = getMessageKey(nickLower, msgId)
         msgData = r.hgetall(msgKey)
         reply = f"{nick}: memo from {msgData['sender']} at {msgData['time']} UTC: {msgData['message']}"
         # Remove the message from the dictionary after processing it
@@ -76,6 +78,7 @@ if __name__ == "__main__":
     tellCmd("Trashlord", "rae", "You should watch this video.")
     # krm sends memo to rae
     tellCmd("krm", "rae", "I just wanted to let you know about this new video game.")
+    tellCmd("krm", "RAE", "Another message.")
     # rae speaks in ##vegan
     replies = getUserMessages("rae")
     for reply in replies: print(reply)

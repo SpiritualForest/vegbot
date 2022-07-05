@@ -12,11 +12,12 @@ def seen(botObj, nick, target, params):
     botObj.msg(target, getLastSeen(user))
 
 def getLastSeen(user):
-    mapping = f"seen:{user}"
+    mapping = f"seen:{user.lower()}"
     data = r.hgetall(mapping)
     if not data:
         return f"I have never seen {user}."
     # Now for the actual stuff.
+    nick = data["nick"]
     message = data["message"]
     channel = data["channel"]
     time = data["time"]
@@ -29,7 +30,7 @@ def getLastSeen(user):
     weeks, days = divmod(timeDiff.days, 7)
     minutes, seconds = divmod(timeDiff.seconds, 60)
     hours, minutes = divmod(minutes, 60)
-    reply = f"I have last seen {user} "
+    reply = f"I have last seen {nick} "
     if weeks > 0:
         wmsg = "weeks" if weeks > 1 else "week"
         reply += f"{weeks} {wmsg} "
@@ -59,7 +60,7 @@ def seenPrivmsg(botObj, nick, target, params):
     logMessage(nick, target, msg, utcnow)
 
 def logMessage(nick, channel, message, utcnow):
-    mapping = f"seen:{nick}"
+    mapping = f"seen:{nick.lower()}"
     # Formatted time
     h = utcnow.hour if utcnow.hour > 9 else "0" + str(utcnow.hour)
     m = utcnow.minute if utcnow.minute > 9 else "0" + str(utcnow.minute)
@@ -68,6 +69,7 @@ def logMessage(nick, channel, message, utcnow):
     r.hset(mapping, "time", formattedUtcNow)
     r.hset(mapping, "message", message)
     r.hset(mapping, "channel", channel)
+    r.hset(mapping, "nick", nick)
     # for timedelta stuff
     r.hset(mapping, "year", utcnow.year)
     r.hset(mapping, "month", utcnow.month)
@@ -84,6 +86,8 @@ if __name__ == "__main__":
     logMessage("Trashlord", "##vegan", "this is a test message for seen plugin.", datetime.datetime.utcnow() - twoWeeks)
     sleep(2)
     print(getLastSeen("Trashlord"))
+    logMessage("tRAshlOrD", "##vegan", "this is another test message", datetime.datetime.utcnow() - twoWeeks)
+    print(getLastSeen("traSHLoRd"))
 else:
     import commands
     import events

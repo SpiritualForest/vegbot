@@ -75,12 +75,17 @@ class TitleBot(irc.IRCClient):
                 return
 
         words = message.split()
-        if words[0].startswith(commands.cmdChar):
+        if target == self.nickname:
+            # if pm, the output target becomes the user
+            target = nick
+        
+        # Execute the privmsg event callbacks
+        events.executeCallbacks(events.E_PRIVMSG, self, nick, target, words) 
+        
+        # Handle commands
+        if words[0].startswith(commands.cmdChar) and len(words[0]) > 1:
             cmd = words[0][1:].lower()
             params = words[1:]
-            if target == self.nickname:
-                # Set the user issuing the command as the target
-                target = nick
             self.handleBotCommand(nick, words[0][1:], params, target)
             return
 
@@ -125,10 +130,7 @@ class TitleBot(irc.IRCClient):
                     title = " ".join(soup.title.string.split("\n"))
                     self.titles[word] = title
                 self.msg(target, f"{bold}Title:{bold} {title}")
-            
-            # Now execute the callbacks of any plugins that hooked the privmsg event
-            events.executeCallbacks(events.E_PRIVMSG, self, nick, target, words)
-    
+             
     def isFlood(self):
         # Flooding detection
         timespan = datetime.now() - self.lastMessageTimestamp
@@ -160,7 +162,7 @@ class TitleBot(irc.IRCClient):
         self.nickname = f"{self.baseNick}{self.nickCollisionId}"
         return self.nickname
 
-    def handleBotCommand(self, nick, cmd, args, channel):
+    def handleBotCommand(self, nick, cmd, args, target):
         if nick in self.admins:
             # Admin-only commands
             if cmd == "droptitles":
@@ -188,7 +190,7 @@ class TitleBot(irc.IRCClient):
         if not args:
             return
         if cmd in commands.callbacks:
-            commands.executeCommand(cmd, self, nick, channel, args)
+            commands.executeCommand(cmd, self, nick, target, args)
 
 class TitleBotFactory(protocol.ClientFactory):
     def __init__(self, channels):
