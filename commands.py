@@ -10,10 +10,10 @@ def addCommand(triggers, function):
     for trigger in triggers:
         callbacks[trigger] = function
 
-def executeCommand(trigger: str, target: str, params: list[str]):
+def executeCommand(trigger: str, botObj, nick: str, target: str, params: list[str]):
     try:
         callback = callbacks[trigger]
     except KeyError:
         # No such command
         return
-    return callback(params, target)
+    callback(botObj, nick, target, params)

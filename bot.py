@@ -7,8 +7,9 @@ import re
 import os
 import sys
 import commands
+import events
 from tor_request import torRequest
-from plugins import wikipedia, wiktionary, youtube, ud, calc
+from plugins import wikipedia, wiktionary, youtube, ud, calc, tell, seen
 
 urlPatternDotcom = re.compile("^https://(www|m).youtube.com/watch\?v=.+$")
 urlPatternDotbe = re.compile("^https://youtu.be/.+$")
@@ -121,9 +122,12 @@ class TitleBot(irc.IRCClient):
                         print(f"{datetime.now()} UnicodeDecodeError for {word}")
                         return
                     soup = BeautifulSoup(content, "html.parser")
-                    title = soup.title.string
+                    title = " ".join(soup.title.string.split("\n"))
                     self.titles[word] = title
                 self.msg(target, f"{bold}Title:{bold} {title}")
+            
+            # Now execute the callbacks of any plugins that hooked the privmsg event
+            events.executeCallbacks(events.E_PRIVMSG, self, nick, target, words)
     
     def isFlood(self):
         # Flooding detection
@@ -179,14 +183,12 @@ class TitleBot(irc.IRCClient):
             return
         if cmd == "help":
             # FIXME: handle this shit
-            self.msg(channel, "Available commands: calc, wp, ud, join, leave, droptitles, dropyoutube")
+            self.msg(channel, "Available commands: tell, seen, calc, wp, ud, join, leave, droptitles, dropyoutube")
         
         if not args:
             return
         if cmd in commands.callbacks:
-            replies = commands.executeCommand(cmd, channel, args)
-            for reply in replies:
-                self.msg(channel, reply)
+            commands.executeCommand(cmd, self, nick, channel, args)
 
 class TitleBotFactory(protocol.ClientFactory):
     def __init__(self, channels):

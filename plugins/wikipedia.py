@@ -2,8 +2,6 @@
 
 import requests
 from requests import RequestException
-from commands import addCommand
-import codes
 
 def getInfo(title, lang="en"):
     title = title.replace(" ", "_")
@@ -11,13 +9,20 @@ def getInfo(title, lang="en"):
     with requests.get(summaryUrl) as response:
         return response.json()
 
-def wiki(params, target=None):
+def wiki(botObj, nick, target, params):
     lang = "de" if target == "##deutsch" else "en"
     if params[0].startswith("lang=") or params[0].startswith("l="):
         lang = params[0].split("=").pop()
         params.pop(0)
     text = " ".join(params)
-    return wikipedia(text, lang)
+    replies = wikipedia(text, lang)
+    if len(replies) == 1:
+        # Means no results found
+        botObj.msg(target, "No results found.")
+    else:
+        description, url = replies
+        botObj.msg(target, description)
+        botObj.msg(target, f"{codes.bold}{codes.color}12{url}{codes.color}{codes.bold}")
 
 def wikipedia(text, lang):
     searchUrl = f"http://{lang}.wikipedia.org/w/api.php?action=query&format=json&list=search"
@@ -44,12 +49,14 @@ def wikipedia(text, lang):
     if len(description) >= 350:
         description = f"{description[:350]}..."
 
-    return (description, f"{codes.bold}{codes.color}12{url}{codes.color}{codes.bold}")
-
-addCommand(("w", "wiki", "wp", "wikipedia"), wiki)
+    return (description, f"{url}")
 
 if __name__ == "__main__":
-    result = wiki(["cold", "brew"])
+    result = wikipedia("cold brew", "en")
     for r in result: print(r)
-    result = wiki(["lang=he", "הלסינקי"])
+    result = wikipedia("הלסינקי", "he")
     for r in result: print(r)
+else:
+    from commands import addCommand
+    import codes
+    addCommand(("w", "wiki", "wp", "wikipedia"), wiki) 
