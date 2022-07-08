@@ -23,5 +23,8 @@ def wiktionary(botObj, nick, target, params):
 if __name__ == "__main__":
     print(wiktionaryCmd("love"))
 else:
-    from commands import addCommand
-    addCommand(triggers, wiktionary)
+    def registerCommands():
+        commands = {}
+        for trigger in triggers:
+            commands[trigger] = wiktionary
+        return commands

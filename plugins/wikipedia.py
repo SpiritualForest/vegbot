@@ -57,6 +57,9 @@ if __name__ == "__main__":
     result = wikipedia("הלסינקי", "he")
     for r in result: print(r)
 else:
-    from commands import addCommand
     import codes
-    addCommand(("w", "wiki", "wp", "wikipedia"), wiki) 
+    def registerCommands():
+        commands = {}
+        for alias in ("wikipedia", "wiki", "wp", "w"):
+            commands[alias] = wiki
+        return commands

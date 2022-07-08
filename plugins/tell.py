@@ -49,6 +49,7 @@ def tellCmd(sender, user, message):
         r.hset(msgKey, key, val)
 
 def tellCallback(botObj, nick, target, params):
+    # Called when <nick> sends a message
     messages = getUserMessages(nick)
     for message in messages:
         botObj.msg(target, message)
@@ -84,7 +85,8 @@ if __name__ == "__main__":
     for reply in replies: print(reply)
 
 else:
-    import commands
-    import events
-    commands.addCommand(("tell", "t"), tell)
-    events.addEvent(events.E_PRIVMSG, tellCallback)
+    from plugin import E_PRIVMSG
+    def registerCommands():
+        return {"tell": tell, "t": tell}
+    def registerEvents():
+        return {E_PRIVMSG: [tellCallback]}

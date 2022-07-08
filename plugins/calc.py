@@ -19,5 +19,5 @@ if __name__ == "__main__":
     print(calcCmd("(34*100)/521"))
     print(calcCmd("239847203987**892"))
 else:
-    import commands
-    commands.addCommand(("calc",), calc)
+    def registerCommands():
+        return {"calc": calc}

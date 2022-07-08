@@ -3,9 +3,7 @@ from twisted.internet import reactor, protocol, ssl
 from datetime import datetime, timedelta
 import os
 import sys
-import commands
-import events
-from plugins import url_parser, wikipedia, wiktionary, ud, calc, tell, seen
+import plugin # Plugin manager
 
 class TitleBot(irc.IRCClient):
     def __init__(self):
@@ -78,13 +76,18 @@ class TitleBot(irc.IRCClient):
             target = nick
         
         # Execute the privmsg event callbacks
-        events.executeCallbacks(events.E_PRIVMSG, self, nick, target, words) 
+        plugin.dispatchEvent(plugin.E_PRIVMSG, self, nick, target, words) 
         
         # Handle commands
-        if words[0].startswith(commands.cmdChar) and len(words[0]) > 1:
+        if words[0].startswith(plugin.cmdChar) and len(words[0]) > 1:
             cmd = words[0][1:].lower()
             params = words[1:]
-            self.handleBotCommand(nick, words[0][1:], params, target)
+            if cmd == "plugin" and nick in self.admins:
+                # Only bot owner can mess with plugins - make this configurable
+                self.handlePlugin(target, params)
+            else:
+                self.isFlood()
+                plugin.dispatchCommand(cmd, self, nick, target, params)
  
     def isFlood(self):
         # Flooding detection
@@ -105,6 +108,43 @@ class TitleBot(irc.IRCClient):
             self.linksCount = 0
             return False
 
+    def handlePlugin(self, target, params):
+        # target is for output
+        if not params:
+            return
+        action = params.pop(0)
+        if action == "load":
+            if not params:
+                # Load everything
+                success = plugin.findPlugins()
+                if success:
+                    self.msg(target, "Loaded all plugins.")
+                else:
+                    self.msg(target, "Not all plugins loaded.")
+            else:
+                # Load the specific plugin
+                name = params.pop(0)
+                success = plugin.loadPlugin(name)
+                if success:
+                    self.msg(target, f"Loaded plugin {name}.")
+                else:
+                    self.msg(target, f"Failed to load plugin {name}.")
+        elif action == "unload":
+            if not params:
+                return
+            name = params[0]
+            success = plugin.unloadPlugin(name)
+            if success:
+                self.msg(target, f"Unloaded plugin {name}.")
+        elif action == "reload":
+            if not params:
+                return
+            name = params[0]
+            success = plugin.reloadPlugin(name)
+            if success:
+                self.msg(target, f"Reloaded plugin {name}.")
+            else:
+                self.msg(target, f"Failed to reload plugin {name}.")
 
     def noticed(self, user, channel, message):
         print(f"NOTICE - <{user}> {message}")
@@ -117,34 +157,14 @@ class TitleBot(irc.IRCClient):
         self.nickname = f"{self.baseNick}{self.nickCollisionId}"
         return self.nickname
 
-    def handleBotCommand(self, nick, cmd, args, target):
-        if nick in self.admins:
-            # Admin-only commands
-            if cmd == "join":
-                if not args: return
-                self.join(",".join(args))
-            elif cmd == "leave":
-                if not args: return
-                self.part(",".join(args))
-        # Regular non-admin commands
-        if self.isFlood():
-            # Flooding detected.
-            return
-        if cmd == "help":
-            # FIXME: handle this shit
-            self.msg(channel, "Available commands: tell, seen, calc, wp, ud, join, leave, droptitles, dropyoutube")
-        
-        if not args:
-            return
-        if cmd in commands.callbacks:
-            commands.executeCommand(cmd, self, nick, target, args)
-
 class TitleBotFactory(protocol.ClientFactory):
     def __init__(self, channels: str, isTestMode: bool):
         self.channels = channels
         self.isTestMode = isTestMode
         if not isTestMode:
             self.password = os.environ["VEGBOT_PASSWORD"]
+        # Load plugins
+        plugin.findPlugins()
 
     def buildProtocol(self, addr):
         p = TitleBot()

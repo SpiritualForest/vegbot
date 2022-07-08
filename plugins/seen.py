@@ -89,7 +89,10 @@ if __name__ == "__main__":
     logMessage("tRAshlOrD", "##vegan", "this is another test message", datetime.datetime.utcnow() - twoWeeks)
     print(getLastSeen("traSHLoRd"))
 else:
-    import commands
-    import events
-    commands.addCommand(("seen", "s"), seen)
-    events.addEvent(events.E_PRIVMSG, seenPrivmsg)
+    # Register the commands and privmsg event
+    from plugin import E_PRIVMSG
+    def registerCommands():
+        return {"seen": seen, "s": seen}
+    
+    def registerEvents():
+        return {E_PRIVMSG: [seenPrivmsg]}

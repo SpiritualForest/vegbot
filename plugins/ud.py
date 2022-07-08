@@ -2,7 +2,6 @@
 
 import requests
 from codes import bold
-from commands import addCommand
 
 def udCmd(term):
     url = f"http://api.urbandictionary.com/v0/define"
@@ -21,7 +20,8 @@ def ud(botObj, nick, target, params):
     term = " ".join(params)
     botObj.msg(target, udCmd(term))
 
-addCommand(("ud",), ud)
+def registerCommands():
+    return {"ud": ud}
 
 if __name__ == "__main__":
     result = udCmd("shit")
