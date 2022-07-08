@@ -2,8 +2,6 @@
 
 import importlib
 import os
-import event
-import command
 
 loadedPlugins = dict() # name: Plugin object
 # When a plugin is loaded, its module object is placed into the reload list.
