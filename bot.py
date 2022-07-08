@@ -1,19 +1,11 @@
 from twisted.words.protocols import irc
 from twisted.internet import reactor, protocol, ssl
-import requests
-from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
-import re
 import os
 import sys
 import commands
 import events
-from tor_request import torRequest
-from plugins import wikipedia, wiktionary, youtube, ud, calc, tell, seen
-
-urlPatternDotcom = re.compile("^https://(www|m).youtube.com/watch\?v=.+$")
-urlPatternDotbe = re.compile("^https://youtu.be/.+$")
-urlGeneral = re.compile("^https?://.+\.[A-Za-z0-9]+/?.+?$")
+from plugins import url_parser, wikipedia, wiktionary, ud, calc, tell, seen
 
 class TitleBot(irc.IRCClient):
     def __init__(self):
@@ -21,8 +13,6 @@ class TitleBot(irc.IRCClient):
         self.nickname = "vegbot" # Current nickname
         self.nickCollisionId = 0 # Increases in case of collision and gets attached to the nick
         self.baseNick = "vegbot" # Base nickname for the collision alter-nick function
-        self.youtube = dict() # url: (title, author) for memoization
-        self.titles = dict() # url: title
         # Flood protection stuff
         self.lastMessageTimestamp = datetime.now() # When was the last message received
         self.linksCount = 0 # How many links we have handled within the last 10 seconds
@@ -31,6 +21,9 @@ class TitleBot(irc.IRCClient):
 
     def lineReceived(self, line):
         super().lineReceived(line)
+        if self.factory.isTestMode:
+            # Running in test mode, don't parse anything here, don't identify to SASL.
+            return
         line = line.decode()
         chunks = line.split()
         # :zinc.libera.chat CAP vegbot2 ACK :sasl
@@ -44,6 +37,7 @@ class TitleBot(irc.IRCClient):
             self.sendLine(f"AUTHENTICATE {b64}")
 
     def serverReplied(self, cmd, args):
+        # This will only be executed if the bot isn't in test mode.
         if cmd == "CAP" and args == "ACK :sasl":
             # Continue with SASL authentication
             self.sendLine("AUTHENTICATE PLAIN")
@@ -54,13 +48,17 @@ class TitleBot(irc.IRCClient):
             self.join(self.factory.channels)
 
     def connectionMade(self):
-        super().connectionMade()
         print("Connected to server...")
-        # SASL stuff
+        super().connectionMade()
+        if self.factory.isTestMode:
+            # No SASL here.
+            return
         self.sendLine("CAP REQ :sasl")
 
     def signedOn(self):
-        pass
+        if self.factory.isTestMode:
+            print(f"Joining {self.factory.channels}")
+            self.join(self.factory.channels)
 
     def privmsg(self, user, target, message):
         # If we reached here, it must be a channel message
@@ -87,50 +85,7 @@ class TitleBot(irc.IRCClient):
             cmd = words[0][1:].lower()
             params = words[1:]
             self.handleBotCommand(nick, words[0][1:], params, target)
-            return
-
-        bold = chr(2)
-
-        for word in words:
-            # Use regex matching
-            if urlPatternDotcom.match(word) is not None or urlPatternDotbe.match(word) is not None:
-                if self.isFlood():
-                    # Flooding detected
-                    return
-                if word in self.youtube:
-                    # The title for this particular URL was already fetched earlier and cached
-                    title, uploader = self.youtube[word]
-                else:
-                    # Not cached. Fetch new.
-                    title, uploader = youtube.getVideoInfo(word)
-                    if (title, uploader) == (None, None):
-                        # Bad URL
-                        return
-                    # Cache it
-                    self.youtube[word] = (title, uploader)
-                self.msg(target, f"{bold}Title{bold}: {title} ({bold}Uploader:{bold} {uploader})")
-            
-            elif urlGeneral.match(word) is not None:
-                # Regular URL title fetching
-                if self.isFlood():
-                    return
-                if word in self.titles:
-                    title = self.titles[word]
-                else:
-                    response = torRequest(word)
-                    if response is None or response.status_code != 200:
-                        print("--- HTTP REQUEST FAILED ---")
-                        return
-                    try:
-                        content = response.content.decode()
-                    except UnicodeDecodeError:
-                        print(f"{datetime.now()} UnicodeDecodeError for {word}")
-                        return
-                    soup = BeautifulSoup(content, "html.parser")
-                    title = " ".join(soup.title.string.split("\n"))
-                    self.titles[word] = title
-                self.msg(target, f"{bold}Title:{bold} {title}")
-             
+ 
     def isFlood(self):
         # Flooding detection
         timespan = datetime.now() - self.lastMessageTimestamp
@@ -165,15 +120,7 @@ class TitleBot(irc.IRCClient):
     def handleBotCommand(self, nick, cmd, args, target):
         if nick in self.admins:
             # Admin-only commands
-            if cmd == "droptitles":
-                # Drop title caches
-                self.titles = dict()
-                self.msg(channel, "Title caches dropped.")
-            elif cmd == "dropyoutube":
-                # Drop youtube data caches
-                self.youtube = dict()
-                self.msg(channel, "YouTube caches dropped.")
-            elif cmd == "join":
+            if cmd == "join":
                 if not args: return
                 self.join(",".join(args))
             elif cmd == "leave":
@@ -193,9 +140,11 @@ class TitleBot(irc.IRCClient):
             commands.executeCommand(cmd, self, nick, target, args)
 
 class TitleBotFactory(protocol.ClientFactory):
-    def __init__(self, channels):
+    def __init__(self, channels: str, isTestMode: bool):
         self.channels = channels
-        self.password = os.environ["VEGBOT_PASSWORD"]
+        self.isTestMode = isTestMode
+        if not isTestMode:
+            self.password = os.environ["VEGBOT_PASSWORD"]
 
     def buildProtocol(self, addr):
         p = TitleBot()
@@ -215,11 +164,15 @@ server = "irc.libera.chat"
 port = 6697
 channels = "##vegan,##deutsch,##metal"
 testChannel = "##trashtest"
+isTestMode = False
 
 if len(sys.argv) > 1 and sys.argv[1] == "--test":
+    print("Running in test mode...")
     channels = testChannel
+    # Run the bot in Test mode. No SASL identification. Join the channels in the signedOn event.
+    isTestMode = True
 
-botFactory = TitleBotFactory(channels)
+botFactory = TitleBotFactory(channels, isTestMode)
 
 reactor.connectSSL(server, port, botFactory, ssl.ClientContextFactory())
 reactor.run()
