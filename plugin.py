@@ -11,9 +11,11 @@ reload = []
 pluginsDir = "plugins"
 events = dict() # event: list of plugin objects who registered this event
 commands = dict() # cmd: plugin who registered it
+helpMessages = dict() # pluginName: help message
 
 cmdChar = "."
 E_PRIVMSG = "PRIVMSG"
+E_JOIN = "JOIN"
 
 class Plugin:
     def __init__(self, name, module, registeredCommands, registeredEvents):
@@ -24,19 +26,26 @@ class Plugin:
         
         # Now register the commands and events of this plugin
         global commands, events
-        for command in registeredCommands:
-            if command in commands:
-                # Already registered
-                print(f"Plugin '{name}' can't register command '{command}': it is already registered.")
-                continue
-            commands[command] = name
+        
+        # Commands
+        try:
+            for command in registeredCommands:
+                if command in commands:
+                    # Already registered
+                    print(f"Plugin '{name}' can't register command '{command}': it is already registered.")
+                    continue
+                commands[command] = name
+        except TypeError as e:
+            print(f"Could not register commands for {name}: {e}")
+
+        # Events
         for event in registeredEvents:
             try:
                 events[event].append(name)
             except KeyError:
                 events[event] = [name]
 
-    def dispatchEvent(self, event, botObj, nick, target, params):
+    def dispatchEvent(self, event, botObj, nick, target, params=[]):
         for func in self.events[event]:
             func(botObj, nick, target, params)
 
@@ -51,16 +60,15 @@ def findPlugins():
             break
     
     # Now we parse the plugin name and load it
+    allLoaded = True
     for filename in files:
         filename = filename.replace(".py", "")
         success = loadPlugin(filename)
         if success:
             print(f"Plugin '{filename}' loaded successfully.")
         else:
-            # Not all plugins loaded successfully, so return False
-            return False
-    # All loaded
-    return True
+            allLoaded = False
+    return allLoaded
 
 def loadPlugin(name: str):
     name = f"{pluginsDir}.{name}"
@@ -70,8 +78,15 @@ def loadPlugin(name: str):
             # Reload
             pluginModule = importlib.reload(pluginModule)
     except ModuleNotFoundError:
-        print(f"Error loading plugin {name}: no such module")
-        return False
+        importlib.invalidate_caches()
+        print(f"Error loading plugin {name} - invalidating caches and trying again.")
+        try:
+            # No reloading here, because if it can be reloaded, it would have been found previously.
+            # Meaning, this must be a newly created module.
+            pluginModule = importlib.import_module(name)
+        except ModuleNotFoundError:
+            print(f"Error loading plugin {name} - file not found. Giving up.")
+            return False
     
     # Loaded successfully, now we need to call our events and commands registration function
     # It returns a tuple of dictionaries
@@ -85,7 +100,17 @@ def loadPlugin(name: str):
     except AttributeError:
         # No events were registered by the plugin
         registeredEvents = {}
-    pluginObj = Plugin(name, pluginModule, registeredCommands, registeredEvents)
+    try:
+        global helpMessages
+        helpMessages[name] = pluginModule.help()
+    except AttributeError:
+        # No help
+        print(f"No help message provided for {name}.")
+    try:
+        pluginObj = Plugin(name, pluginModule, registeredCommands, registeredEvents)
+    except TypeError as e:
+        print(f"Error loading plugin {name}: {e}")
+        return False
     loadedPlugins[name] = pluginObj
     if pluginModule not in reload:
         reload.append(pluginModule)
@@ -122,7 +147,7 @@ def unloadPlugin(name: str):
     del loadedPlugins[pluginName]
     return True
 
-def dispatchEvent(event, botObj, nick, target, params):
+def dispatchEvent(event, botObj, nick, target, params=[]):
     if event not in events:
         # Nobody registered this.
         return

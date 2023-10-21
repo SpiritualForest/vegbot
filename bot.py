@@ -15,7 +15,7 @@ class TitleBot(irc.IRCClient):
         self.lastMessageTimestamp = datetime.now() # When was the last message received
         self.linksCount = 0 # How many links we have handled within the last 10 seconds
         self.ignoreMessagesUntil = datetime.now() # Ignore messages due to flooding until this timestamp has passed
-        self.admins = {"Trashlord", "rae", "xx", "krm", "tumble"}
+        self.admins = {"Trashlord", "rae", "xx", "krm", "tumble", "Roey", "simplicity"}
 
     def lineReceived(self, line):
         super().lineReceived(line)
@@ -58,6 +58,9 @@ class TitleBot(irc.IRCClient):
             print(f"Joining {self.factory.channels}")
             self.join(self.factory.channels)
 
+    def userJoined(self, user, channel):
+        plugin.dispatchEvent(plugin.E_JOIN, self, user, channel)
+    
     def privmsg(self, user, target, message):
         # If we reached here, it must be a channel message
         nick, host = user.split("!")
@@ -182,7 +185,7 @@ class TitleBotFactory(protocol.ClientFactory):
 
 server = "irc.libera.chat"
 port = 6697
-channels = "##vegan,##deutsch,##metal"
+channels = "##vegan,##deutsch,##deutsch-offtopic,##metal,##eco"
 testChannel = "##trashtest"
 isTestMode = False
 

@@ -90,3 +90,5 @@ else:
         return {"tell": tell, "t": tell}
     def registerEvents():
         return {E_PRIVMSG: [tellCallback]}
+    def help():
+        return ".tell <nick> <message> - passes the message to the given username next time they speak anywhere."

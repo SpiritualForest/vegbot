@@ -22,7 +22,11 @@ def wiki(botObj, nick, target, params):
     else:
         description, url = replies
         botObj.msg(target, description)
-        botObj.msg(target, f"{codes.bold}{codes.color}12{url}{codes.color}{codes.bold}")
+        if target == "##deutsch":
+            url = f"{codes.bold}{url}{codes.bold}"
+        else:
+            url = f"{codes.bold}{codes.color}12{url}{codes.color}{codes.bold}"
+        botObj.msg(target, url)
 
 def wikipedia(text, lang):
     searchUrl = f"http://{lang}.wikipedia.org/w/api.php?action=query&format=json&list=search"
@@ -50,6 +54,12 @@ def wikipedia(text, lang):
         description = f"{description[:350]}..."
 
     return (description, f"{url}")
+
+def help():
+    msg = """Syntax: wikipedia [lang=language] <article>. Displays the summary of the article.
+The optional 'lang' parameter specifies the desired language. English is default. Example input: 'wikipedia lang=de Berlin'.
+Aliases: 'w', 'wp', 'wiki'."""
+    return msg
 
 if __name__ == "__main__":
     result = wikipedia("cold brew", "en")

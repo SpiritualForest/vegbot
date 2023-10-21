@@ -2,7 +2,7 @@ import subprocess
 
 def calc(botObj, nick, target, params):
     expression = "".join(params)
-    botObj.msg(target, calcCmd(expression))
+    botObj.msg(target, f"{nick}: {calcCmd(expression)}")
 
 def calcCmd(expression):
     try:
@@ -14,10 +14,13 @@ def calcCmd(expression):
         return "Result too long."
     return result
 
+def help():
+    return ".calc <expression> - calculates the expression and displays the result."
+
+def registerCommands():
+    return {"calc": calc}
+
 if __name__ == "__main__":
     print(calcCmd("1+2"))
     print(calcCmd("(34*100)/521"))
     print(calcCmd("239847203987**892"))
-else:
-    def registerCommands():
-        return {"calc": calc}
